@@ -15,7 +15,7 @@ from dataLoaders.audiodataset import audioDataset
 class AudioDataLoader(DataLoader):
 
     def __init__(self, dataset, num_data_pts, num_batches=1):
-        super().__init__(dataset)
+        # super().__init__(dataset)
         legnth = len(dataset)
         self.dataset = dataset
         self.num_data_pts = num_data_pts
