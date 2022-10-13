@@ -22,6 +22,9 @@ import train_utils
 import dill
 from contrastive_utils import ContrastiveLoss
 from tqdm import tqdm
+import matplotlib.pyplot as plt
+
+
 
 # set manual random seed for reproducibility
 torch.manual_seed(1)
@@ -35,9 +38,9 @@ if CUDA_AVAILABLE != True:
 
 # initialize training parameters
 RUN = 110
-NUM_EPOCHS = 2000  # 2000
-NUM_CLASSIFIER_EPOCH = 1500
-NUM_BATCHES = 10
+NUM_EPOCHS = 300  # 2000
+NUM_CLASSIFIER_EPOCH = 500
+NUM_BATCHES = 30
 SEGMENT = '2'
 MTYPE = 'conv'
 CTYPE = 0
@@ -78,9 +81,9 @@ NUM_DATA_POINTS = 800
 dataset = audioDataset(r"dataset/final/dataset_try.dill")
 dataloader = AudioDataLoader(dataset, NUM_DATA_POINTS, NUM_BATCHES)
 
-tr1, v1, vef, te1, tef = dataloader.create_split_data(500, 250)  # 1000, 500 | 1500, 500 | 2000, 1000
-tr2, v2, _, te2, _ = dataloader.create_split_data(1500, 500)
-tr3, v3, _, te3, _ = dataloader.create_split_data(2000, 1000)
+tr1, v1, vef, te1, tef = dataloader.create_split_data(300, 250)  # 1000, 500 | 1500, 500 | 2000, 1000
+tr2, v2, _, te2, _ = dataloader.create_split_data(500, 250)
+tr3, v3, _, te3, _ = dataloader.create_split_data(1000, 500)
 # tr4, v4, _, te4, _ = dataloader.create_split_data(2500, 1000)
 # tr5, v5, _, te5, _ = dataloader.create_split_data(3000, 1500)
 # tr6, v6, vef, te6, tef = dataloader.create_split_data(4000, 2000)
@@ -142,6 +145,8 @@ best_valrsq = .20
 best_epoch = 0
 best_ce_loss_val = float('inf')
 # train and validate
+losses1=[]
+losses2=[]
 try:
     print("Training Encoder for %d epochs..." % NUM_EPOCHS)
     if not Skip_encoder:
@@ -211,6 +216,7 @@ try:
     else:
         try:
             perf_model.load_state_dict(torch.load('pc_contrastive_runs/' + NAME))
+            print("load success")
         except:
             pass
     print("Training Classifier for %d epochs..." % NUM_CLASSIFIER_EPOCH)
@@ -219,12 +225,11 @@ try:
             param.requires_grad = False
 
     perf_optimizer = optim.SGD(perf_model.parameters(), lr=LR_RATE_enc, momentum=MOMENTUM, weight_decay=W_DECAY)
-
     for epoch in tqdm(range(1, NUM_CLASSIFIER_EPOCH + 1)):
         # perform training and validation
         train_loss, train_r_sq, train_accu, train_accu2, val_loss, val_r_sq, val_accu, val_accu2 = train_utils.train_and_validate(
             perf_model, criterion, perf_optimizer, training_data, validation_data, METRIC, MTYPE, CTYPE,
-            contrastive=criterion_contrastive, encoder=False, classification=classification)
+            contrastive=criterion_contrastive, encoder=False, classification= not classification)
         if not classification:
             loss_contrastive_val, acc_contrastive_val, ce_loss_val = eval_utils.eval_acc_contrastive(perf_model,
                                                                                                      criterion_contrastive,
@@ -234,9 +239,11 @@ try:
             loss_contrastive_train, acc_contrastive_train, ce_loss_train = eval_utils.eval_acc_contrastive(perf_model,
                                                                                                            criterion_contrastive,
                                                                                                            training_data,
-                                                                                                           METRIC,
-                                                                                                           MTYPE, CTYPE,
-                                                                                                           criterion_CE=criterion)
+                                                                                                        METRIC,
+                                                                                                        MTYPE, CTYPE,
+                                                                                                     criterion_CE=criterion)
+            losses1.append(ce_loss_val.cpu())
+            losses2.append(ce_loss_train.cpu())
         # adjut learning rate
         # train_utils.adjust_learning_rate(perf_optimizer, epoch, ADJUST_EVERY)
         # log data for visualization later
@@ -278,7 +285,7 @@ try:
                 print('[%s %0.5f, %s %0.5f, %s %0.5f %0.5f]' % (
                     'Valid Loss: ', val_loss, ' R-sq: ', val_r_sq, ' Accu:', val_accu, val_accu2))
         # save model if best validation accuracy
-        loss_epoch = ce_loss_val if classification else val_loss
+        loss_epoch = ce_loss_val if not classification else val_loss
         if loss_epoch < best_ce_loss_val:  # loss_contrastive_val.item() < best_loss_contrastive_val:
             n = 'pc_contrastive_runs/' + NAME + '_best'
             train_utils.save(n, perf_model)
@@ -322,7 +329,8 @@ else:
 # validate and test on best validation model
 # read the model
 # filename = file_info + '_Reg'
-filename = NAME + '_best'
+# filename = NAME + '_best'
+filename = NAME
 if torch.cuda.is_available():
     perf_model.cuda()
     # perf_model.load_state_dict(torch.load('/Users/michaelfarren/Desktop/MusicPerfAssessment-claer/src/runs/' + filename + '.pt'))
@@ -345,13 +353,19 @@ else:
     print('[%s %0.5f, %s %0.5f, %s %0.5f %0.5f]' % (
         'Valid Loss: ', val_loss, ' R-sq: ', val_r_sq, ' Accu:', val_accu, val_accu2))
 
+plt.plot(range(len(losses1)),losses1,label="val_loss")
+plt.plot(range(len(losses2)),losses2,label="train_loss")
+plt.legend()
+plt.show()
+
+
 if contrastive and not classification:
     loss_contrastive_test, acc_contrastive_test, ce_loss_test = eval_utils.eval_acc_contrastive(perf_model,
                                                                                                 criterion_contrastive,
                                                                                                 testing_data, METRIC,
                                                                                                 MTYPE, CTYPE,
                                                                                                 criterion_CE=criterion)
-    print('[%s %0.5f, %s %0.5f, %s %0.5f]' % (
+    print('Finally:[%s %0.5f, %s %0.5f, %s %0.5f]' % (
         'Testing Contrastive Loss: ', loss_contrastive_test, 'Testing CE Loss:', ce_loss_test, 'Testing Accuracy: ',
         acc_contrastive_test))
 else:

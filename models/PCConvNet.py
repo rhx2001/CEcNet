@@ -123,7 +123,7 @@ class PCConvNetCls(nn.Module):
             num_classes:    int, number of classes for the classification task
         """
         super(PCConvNetCls, self).__init__()
-        self.num_classes = 2
+        self.num_classes = 4
         if mode == 0:  # for minimum input size of 1000
             # initialize model internal parameters
             self.kernel_size = 7
@@ -266,7 +266,7 @@ class PCConvNetContrastive(nn.Module):
             self.n2_features = 16
             if regression:
                 self.num_classes = num_classes
-                self.classifier = nn.Softmax(dim=4)
+                self.classifier = nn.Softmax(dim=1)
             else:
                 self.num_classes = num_classes
                 self.classifier = nn.Softmax(dim=4)
@@ -374,13 +374,13 @@ class PCConvNetContrastive2(nn.Module):
             # initialize model internal parameters
             self.regression = regression
             self.kernel_size = 7
-            self.stride = 3
-            self.n0_features = 4
-            self.n1_features = 8
-            self.n2_features = 16
+            self.stride = 2
+            self.n0_features = 10  # 4
+            self.n1_features = 20  # 8
+            self.n2_features = 40  # 16
             if regression:
                 self.num_classes = 4
-                self.classifier = nn.Sigmoid()
+                self.classifier = nn.Softmax(dim=1)
             else:
                 self.num_classes = num_classes
                 self.classifier = nn.Softmax(dim=1)
@@ -399,19 +399,27 @@ class PCConvNetContrastive2(nn.Module):
                 # nn.Dropout(0.15),
                 # define the 3rd convolutional layer
                 nn.Conv1d(self.n1_features, self.n2_features, self.kernel_size, self.stride),
-                # output is (109 - 7)/3 + 1 = 35
+                # output is (109 - 7)/2 + 1 = 35 52
                 nn.BatchNorm1d(self.n2_features),
-                nn.ReLU()
+                nn.ReLU(),
+
                 # nn.Dropout(0.15)
             )
             # Fully Connected Layer
+
+            self.lstm1 = nn.GRU(self.n2_features, self.n2_features // 2)
+            self.lstm2 = nn.GRU(self.n2_features // 2, self.n2_features // 2)
             self.fc = nn.Sequential(
-                nn.Linear(self.n2_features, self.n2_features // 2),
-                nn.Linear(self.n2_features // 2, self.num_classes))
+                nn.Linear(self.n2_features // 2, self.n2_features // 3),
+                nn.Dropout(0.1),
+                nn.ReLU(),
+                nn.Linear(self.n2_features // 3, self.num_classes),
+                # nn.Linear(6,4),
+            )
 
     def forward_conv(self, input):
         # get mini batch size from input and reshape
-        # print(input.size())
+        # print(input.size())\
         # mini_batch_size, ssig_size = input.size()s
         # input = input.view(mini_batch_size, 1, sig_size)
         # compute the forward pass through the convolutional layer
@@ -423,8 +431,10 @@ class PCConvNetContrastive2(nn.Module):
         if conv_out is None:
             conv_out = self.forward_conv(input)
         # compute final output
-        final_output = self.fc(conv_out)
-        return final_output if not self.regression else self.classifier(final_output)
+        output, _ = self.lstm1(conv_out)
+        output, _ = self.lstm2(output)
+        final_output = self.fc(output)
+        return self.classifier(final_output)  # final_output if not self.regression else self.classifier(final_output)
 
     def forward(self, input1, input2, conv_out=None):
         """

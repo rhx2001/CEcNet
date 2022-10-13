@@ -94,7 +94,7 @@ def train(model, criterion, optimizer, data, metric, mtype, ctype, contrastive=N
         if model_input.shape[0] % 2 == 1:
             model_input = model_input[:-1]
             model_target = model_target[:-1]
-            model_label =  model_label[::-1]
+            model_label =  model_label[:-1]
         num = model_input.shape[0] // 2
         r1=torch.randperm(num)
         r2=torch.randperm(num)

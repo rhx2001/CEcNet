@@ -201,7 +201,7 @@ class MASTDataloader(DataLoader):
                 d['ratings'] = gt
                 test_split.append(d)
                 count += hop
-        num_data_pts = len(test_split)5
+        num_data_pts = len(test_split)
         mini_batch_size = num_data_pts
         count = 0
         pitch_tensor = torch.zeros(mini_batch_size, chunk_len)
